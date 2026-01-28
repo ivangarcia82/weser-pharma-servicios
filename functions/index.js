@@ -69,6 +69,136 @@ const shopifyRequest = async (query, variables = {}) => {
     }
 };
 
+const formatCurrency = (amount) => {
+  const num = parseFloat(amount);
+  return `$ ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+const nodesQuery = `
+  nodes {
+    id
+    name
+    createdAt
+    customer {
+      displayName
+    }
+    totalPriceSet {
+      shopMoney { amount }
+    }
+    lineItems(first: 50) {
+      nodes {
+        title
+        variant { displayName selectedOptions { name value } unitPrice { amount } price }
+        product { descriptionHtml }
+        image { url }
+      }
+    }
+    metafields(first: 10) {
+      nodes {
+        key
+        value
+      }
+    }
+  }
+`;
+
+const getOrdersObject = (nodes) => {
+  return nodes.map((node) => {
+    const date = node.createdAt;
+    const resultDate = new Date(date);
+    const cdmxDate = new Date(resultDate.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
+    const pad = n => String(n).padStart(2, '0');
+    const day = pad(cdmxDate.getDate());
+    const month = pad(cdmxDate.getMonth() + 1);
+    const year = cdmxDate.getFullYear();
+    const hours = pad(cdmxDate.getHours());
+    const minutes = pad(cdmxDate.getMinutes());
+    const seconds = pad(cdmxDate.getSeconds());
+
+    const productsName = (node.lineItems?.nodes || []).map((li) => `${li.variant?.displayName}`).join('');
+    const ordenCompraMetafield = (node.metafields?.nodes || []).find(
+      mf => mf.key === 'orden_de_compra' || mf.key === 'orden de compra'
+    );
+
+    const modalProducts = (node.lineItems?.nodes || []).map((li) => {
+      let color = '';
+      let quantity = '';
+
+      (li.variant?.selectedOptions || []).forEach(option => {
+        if (option.name === 'Color') {
+          color = option.value;
+        } else if (option.name === 'Cantidad') {
+          quantity = option.value;
+        }
+      });
+
+      return {
+        title: `${li.title} - ${color}`,
+        description: li.product?.descriptionHtml,
+        quantity,
+        price: formatCurrency(li.variant?.unitPrice?.amount),
+        total: formatCurrency(li.variant?.price),
+        image: li.image?.url
+      };
+    });
+
+    const downloadDetails = {
+      date: `${day}-${month}-${year} ${hours}.${minutes}`,
+      totals: [
+        {
+          key: "SUBTOTAL",
+          value: formatCurrency(node.totalPriceSet.shopMoney.amount).replace(' ', '')
+        },
+        {
+          key: "IVA",
+          value: formatCurrency(parseFloat(node.totalPriceSet.shopMoney.amount) * 0.16).replace(' ', '')
+        },
+        {
+          key: "TOTAL",
+          value: formatCurrency(parseFloat(node.totalPriceSet.shopMoney.amount) * 1.16).replace(' ', '')
+        }
+      ],
+      line_items: (node.lineItems?.nodes || []).map((li) => {
+        let color = '';
+        let quantity = '';
+
+        (li.variant?.selectedOptions || []).forEach(option => {
+          if (option.name === 'Color') {
+            color = option.value;
+          } else if (option.name === 'Cantidad') {
+            quantity = option.value;
+          }
+        });
+
+        return {
+          title: `${li.title} - ${color}`,
+          description: li.product?.descriptionHtml,
+          quantity,
+          unit_price: formatCurrency(li.variant?.unitPrice?.amount).replace(' ', ''),
+          line_price: formatCurrency(li.variant?.price).replace(' ', ''),
+          image: li.image?.url
+        };
+      })
+    };
+
+    return {
+      id: node.id,
+      name: node.name,
+      showDate: `${day}/${month}/${year} ${hours}:${minutes}`,
+      internalDate: `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`,
+      productsName,
+      orderStatus: ordenCompraMetafield ? 'Completada' : 'Pendiente',
+      statusClass: ordenCompraMetafield ? 'completed' : 'pending',
+      modalProducts,
+      itemsSize: node.lineItems?.nodes?.length,
+      totalPriceWithoutCurrency: node.totalPriceSet.shopMoney.amount,
+      totalPriceWithCurrency: formatCurrency(node.totalPriceSet.shopMoney.amount),
+      userName: node.customer.displayName,
+      downloadDetails,
+    };
+  });
+}
+
 /**
  * Create a Draft Order
  * Input:
@@ -78,7 +208,7 @@ const shopifyRequest = async (query, variables = {}) => {
  * - query: String (optional) - GraphQL mutation override or specific needs? (Assuming standard here)
  */
 exports.createDraftOrder = onCall(async (request) => {
-    const { lineItems, customerId, email, shippingAddress, note, useAllDiscountIndicator } = request.data;
+    const { lineItems, customerId, email } = request.data;
 
     // Basic validation
     if (!lineItems || !Array.isArray(lineItems) || lineItems.length === 0) {
@@ -86,33 +216,29 @@ exports.createDraftOrder = onCall(async (request) => {
     }
 
     const mutation = `
-    mutation draftOrderCreate($input: DraftOrderInput!) {
-      draftOrderCreate(input: $input) {
-        draftOrder {
-          id
-          name
-          invoiceUrl
-          totalPrice
-          currencyCode
-        }
-        userErrors {
-          field
-          message
+      mutation draftOrderCreate($input: DraftOrderInput!) {
+        draftOrderCreate(input: $input) {
+          draftOrder {
+            id
+            name
+            createdAt
+          }
+          userErrors {
+            field
+            message
+          }
         }
       }
-    }
-  `;
+    `;
 
     // Construct input object
     const input = {
-        lineItems: lineItems, // Ensure these match DraftOrderLineItemInput
-        note: note,
+        lineItems,
+        purchasingEntity: {
+            customerId,
+        },
+        email,
     };
-
-    if (customerId) input.customerId = customerId;
-    if (email) input.email = email;
-    if (shippingAddress) input.shippingAddress = shippingAddress;
-    if (useAllDiscountIndicator) input.useCustomerDefaultAddress = true; // Example flag
 
     const data = await shopifyRequest(mutation, { input });
 
@@ -138,7 +264,7 @@ exports.getDraftOrdersByUser = onCall(async (request) => {
     }
 
     // Ensure customerId is in valid format if needed, but 'query' filter is flexible.
-    // Shopify search query syntax for customer_id looks for numeric ID usually, 
+    // Shopify search query syntax for customer_id looks for numeric ID usually,
     // but if we pass GID, we might need to extract the ID.
     // Let's assume input is a clean numeric ID or we handle it.
     // If it's a GID like "gid://shopify/Customer/123", we extract "123".
@@ -148,77 +274,36 @@ exports.getDraftOrdersByUser = onCall(async (request) => {
     }
 
     const query = `
-    query getDraftOrders($queryString: String!) {
-      draftOrders(first: 20, query: $queryString, reverse: true) {
-        edges {
-          node {
-            id
-            name
-            createdAt
-            totalPrice
-            status
-            customer {
-              firstName
-              lastName
-              email
-            }
-          }
+      query getDraftOrders($queryString: String!) {
+        draftOrders(first: 50, query: $queryString, reverse: true) {
+          ${nodesQuery}
         }
       }
-    }
-  `;
+    `;
 
-    // Search query: "customer_id:123456"
     const variables = { queryString: `customer_id:${numericId}` };
-
     const data = await shopifyRequest(query, variables);
 
-    // Flatten edges/nodes for easier client consumption
-    const orders = data.draftOrders.edges.map(edge => edge.node);
+    const orders = getOrdersObject(data?.draftOrders?.nodes);
 
     return { success: true, orders };
 });
 
 /**
  * Get All Draft Orders
- * Input:
- * - limit: Number (default 10)
- * - cursor: String (optional) - for pagination
  */
 exports.getAllDraftOrders = onCall(async (request) => {
-    const limit = request.data.limit || 10;
-    const cursor = request.data.cursor || null;
-
-    const query = `
-    query getAllDraftOrders($first: Int!, $after: String) {
-      draftOrders(first: $first, after: $after, reverse: true) {
-        pageInfo {
-          hasNextPage
-          endCursor
-        }
-        edges {
-          node {
-            id
-            name
-            email
-            createdAt
-            totalPrice
-            status
-            customer {
-              displayName
-            }
-          }
-        }
+  const query = `
+    query getDraftOrders {
+      draftOrders(first: 50, reverse: true) {
+        ${nodesQuery}
       }
     }
   `;
 
-    const variables = { first: limit, after: cursor };
-    const data = await shopifyRequest(query, variables);
+  const data = await shopifyRequest(query);
 
-    return {
-        success: true,
-        orders: data.draftOrders.edges.map(edge => edge.node),
-        pageInfo: data.draftOrders.pageInfo
-    };
+  const orders = getOrdersObject(data?.draftOrders?.nodes);
+
+  return { success: true, orders };
 });
