@@ -79,9 +79,6 @@ const nodesQuery = `
     id
     name
     createdAt
-    customer {
-      displayName
-    }
     totalPriceSet {
       shopMoney { amount }
     }
@@ -193,7 +190,7 @@ const getOrdersObject = (nodes) => {
       itemsSize: node.lineItems?.nodes?.length,
       totalPriceWithoutCurrency: node.totalPriceSet.shopMoney.amount,
       totalPriceWithCurrency: formatCurrency(node.totalPriceSet.shopMoney.amount),
-      userName: node.customer.displayName,
+      userName: (node.metafields?.nodes || []).find(mf => mf.key === 'usuario')?.value,
       downloadDetails,
     };
   });
@@ -208,7 +205,7 @@ const getOrdersObject = (nodes) => {
  * - query: String (optional) - GraphQL mutation override or specific needs? (Assuming standard here)
  */
 exports.createDraftOrder = onCall(async (request) => {
-    const { lineItems, customerId, email } = request.data;
+    const { lineItems, customerId, email, userName } = request.data;
 
     // Basic validation
     if (!lineItems || !Array.isArray(lineItems) || lineItems.length === 0) {
@@ -238,6 +235,15 @@ exports.createDraftOrder = onCall(async (request) => {
             customerId,
         },
         email,
+        tags: [email.includes('generandoideas') ? 'generandoideas' : 'weserpharma'],
+        metafields: [
+            {
+                key: 'usuario',
+                namespace: 'custom',
+                type: 'single_line_text_field',
+                value: userName,
+            },
+        ],
     };
 
     const data = await shopifyRequest(mutation, { input });
@@ -293,15 +299,17 @@ exports.getDraftOrdersByUser = onCall(async (request) => {
  * Get All Draft Orders
  */
 exports.getAllDraftOrders = onCall(async (request) => {
+  const { customerEmail } = request.data;
   const query = `
-    query getDraftOrders {
-      draftOrders(first: 50, reverse: true) {
+    query getDraftOrders($queryString: String!) {
+      draftOrders(first: 50, query: $queryString, reverse: true) {
         ${nodesQuery}
       }
     }
   `;
 
-  const data = await shopifyRequest(query);
+  const variables = { queryString: customerEmail.includes("generandoideas") ? "" : "tag:weserpharma" };
+  const data = await shopifyRequest(query, variables);
 
   const orders = getOrdersObject(data?.draftOrders?.nodes);
 
