@@ -31,6 +31,8 @@ const { defineSecret } = require("firebase-functions/params");
 
 setGlobalOptions({ maxInstances: 10 });
 
+const { Resend } = require('resend');
+
 /**
  * Helper function to make GraphQL requests to Shopify
  * @param {string} query - The GraphQL query or mutation
@@ -219,6 +221,17 @@ exports.createDraftOrder = onCall(async (request) => {
             id
             name
             createdAt
+			totalPriceSet {
+				shopMoney { amount }
+			}
+			lineItems(first: 50) {
+				nodes {
+					title
+					variant { displayName selectedOptions { name value } unitPrice { amount } price }
+					product { descriptionHtml }
+					image { url }
+				}
+			}
           }
           userErrors {
             field
@@ -241,7 +254,7 @@ exports.createDraftOrder = onCall(async (request) => {
                 key: 'usuario',
                 namespace: 'custom',
                 type: 'single_line_text_field',
-                value: userName,
+                value: userName || email,
             },
         ],
     };
@@ -253,7 +266,111 @@ exports.createDraftOrder = onCall(async (request) => {
         throw new HttpsError("invalid-argument", "Shopify validation errors", draftOrderCreate.userErrors);
     }
 
-    return { success: true, draftOrder: draftOrderCreate.draftOrder };
+	const draftOrder = [draftOrderCreate.draftOrder];
+	/*const orders = getOrdersObject(draftOrder);
+
+	let htmlLineItems = '';
+
+	for (const lineItem of orders[0].downloadDetails.line_items) {
+		htmlLineItems += `
+			<tr>
+				<td style="padding:10px; border: .5px solid #000; text-align:left;">
+					<img src="${lineItem.image}" width="40" />
+				</td>
+				<td style="padding:10px; border: .5px solid #000; text-align:left;">
+					${lineItem.title}
+				</td>
+				<td style="padding:10px; border: .5px solid #000; text-align:left;">
+					${lineItem.description}
+				</td>
+				<td style="padding:10px; border: .5px solid #000; text-align:center;">
+					${lineItem.quantity}
+				</td>
+				<td style="padding:10px; border: .5px solid #000; text-align:center;">
+					${lineItem.unit_price}
+				</td>
+				<td style="padding:10px; border: .5px solid #000;" text-align:center;>
+					${lineItem.line_price}
+				</td>
+			</tr>
+		`;
+	}
+
+    for (const t of orders[0].downloadDetails.totals) {
+        htmlLineItems += `
+            <tr>
+                <td style="border: none;"></td>
+                <td style="border: none;"></td>
+                <td style="border: none;"></td>
+                <td style="border: none;"></td>
+                <td style="text-align: center; border: .5px solid #000000; padding: 0; font-weight: bolder; background-color: #FF7300;">${t.key}</td>
+                <td style="text-align: center; border: .5px solid #000000; padding: 0;">${t.value}</td>
+            </tr>
+        `;
+    }
+
+    const htmlEmail = `
+    <!DOCTYPE html>
+    <html>
+        <body style="margin:0; font-family:Arial, sans-serif; font-size:12px; color:#000;">
+            <table width="90%" cellpadding="0" cellspacing="0" style="padding: 20px;">
+                <tr>
+                    <td style="width: 50%; text-align: left; padding: 20px;">
+                        <img src="https://cdn.shopify.com/s/files/1/0641/0338/3246/files/Logo_Inicio_1080x266_ffd1075f-6821-4fb0-a7ae-19e4c844dcf1.png?v=1731683448" style="width: 60%;" />
+                    </td>
+                    <td style="width: 50%; text-align: right; padding: 20px;">
+                        <img src="https://cdn.shopify.com/s/files/1/0657/4266/7889/files/logo_752e5e69-8f82-4967-9b77-7d3dccad1230.png?v=1767720071" style="width: 30%;" />
+                    </td>
+                </tr>
+            </table>
+
+            <table width="90%" align="center" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                <thead>
+                    <tr>
+                        <th style="background:#FF7300; border:.5px solid #000; padding: 10px;">IMAGEN</th>
+                        <th style="background:#FF7300; border:.5px solid #000; padding: 10px;">NOMBRE</th>
+                        <th style="background:#FF7300; border:.5px solid #000; padding: 10px;">DESCRIPCIÓN</th>
+                        <th style="background:#FF7300; border:.5px solid #000; padding: 10px;">CANTIDAD</th>
+                        <th style="background:#FF7300; border:.5px solid #000; padding: 10px;">PRECIO UNITARIO</th>
+                        <th style="background:#FF7300; border:.5px solid #000; padding: 10px;">IMPORTE</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${htmlLineItems}
+                </tbody>
+            </table>
+
+            <table width="90%" align="center" cellpadding="0" cellspacing="0" style="margin: 20px auto;">
+                <tr>
+                    <td style="padding: 15px; text-align: left; font-size: 14px; font-weight: bold; color: #000;">
+                        Cotización creada por: ${userName || email}
+                    </td>
+                    <td style="padding: 15px; text-align: right;">
+                        <a href="https://apiweser.generandoideas.com/pages/cotizaciones"
+                        style="background-color: #FF7300; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
+                            Ver Cotizaciones
+                        </a>
+                    </td>
+                </tr>
+            </table>
+        </body>
+    </html>
+    `;
+
+	const resend = new Resend(process.env.RESEND_API_KEY);
+	await resend.emails.send({
+		from: 'Cotizador Weser Pharma <onboarding@resend.dev>', // permitido sin dominio
+		to: [
+            'acontreras@generandoideas.com',
+            // 'aespinosa@generandoideas.com',
+            // 'dolores.martinez@weserpharma.com.mx',
+            // 'alejandra.aguilar@siegfried.com.mx',
+        ],
+		subject: 'Nueva cotización creada en Weser Pharma',
+		html: htmlEmail,
+	});*/
+
+    return { success: true, draftOrder };
 });
 
 /**
