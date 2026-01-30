@@ -76,11 +76,26 @@ const formatCurrency = (amount) => {
   return `$ ${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
+const formatDate = (date) => {
+  const resultDate = new Date(date);
+  const cdmxDate = new Date(resultDate.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
+  const pad = n => String(n).padStart(2, '0');
+  return {
+    day: pad(cdmxDate.getDate()),
+    month: pad(cdmxDate.getMonth() + 1),
+    year: cdmxDate.getFullYear(),
+    hours: pad(cdmxDate.getHours()),
+    minutes: pad(cdmxDate.getMinutes()),
+    seconds: pad(cdmxDate.getSeconds())
+  };
+};
+
 const nodesQuery = `
   nodes {
     id
     name
     createdAt
+    updatedAt
     totalPriceSet {
       shopMoney { amount }
     }
@@ -103,16 +118,8 @@ const nodesQuery = `
 
 const getOrdersObject = (nodes) => {
   return nodes.map((node) => {
-    const date = node.createdAt;
-    const resultDate = new Date(date);
-    const cdmxDate = new Date(resultDate.toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
-    const pad = n => String(n).padStart(2, '0');
-    const day = pad(cdmxDate.getDate());
-    const month = pad(cdmxDate.getMonth() + 1);
-    const year = cdmxDate.getFullYear();
-    const hours = pad(cdmxDate.getHours());
-    const minutes = pad(cdmxDate.getMinutes());
-    const seconds = pad(cdmxDate.getSeconds());
+    const date = formatDate(node.createdAt);
+    const updatedAt = formatDate(node.updatedAt);
 
     const productsName = (node.lineItems?.nodes || []).map((li) => `${li.variant?.displayName}`).join('');
     const ordenCompraMetafield = (node.metafields?.nodes || []).find(
@@ -142,7 +149,7 @@ const getOrdersObject = (nodes) => {
     });
 
     const downloadDetails = {
-      date: `${day}-${month}-${year} ${hours}.${minutes}`,
+      date: `${date.day}-${date.month}-${date.year} ${date.hours}.${date.minutes}`,
       totals: [
         {
           key: "SUBTOTAL",
@@ -183,8 +190,9 @@ const getOrdersObject = (nodes) => {
     return {
       id: node.id,
       name: node.name,
-      showDate: `${day}/${month}/${year} ${hours}:${minutes}`,
-      internalDate: `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`,
+      showDate: `${date.day}/${date.month}/${date.year} ${date.hours}:${date.minutes}`,
+      internalDate: `${date.year}-${date.month}-${date.day} ${date.hours}:${date.minutes}:${date.seconds}`,
+      updatedAt: `${updatedAt.year}-${updatedAt.month}-${updatedAt.day} ${updatedAt.hours}:${updatedAt.minutes}:${updatedAt.seconds}`,
       productsName,
       orderStatus: ordenCompraMetafield ? 'Completada' : 'Pendiente',
       statusClass: ordenCompraMetafield ? 'completed' : 'pending',
@@ -221,17 +229,17 @@ exports.createDraftOrder = onCall(async (request) => {
             id
             name
             createdAt
-			totalPriceSet {
-				shopMoney { amount }
-			}
-			lineItems(first: 50) {
-				nodes {
-					title
-					variant { displayName selectedOptions { name value } unitPrice { amount } price }
-					product { descriptionHtml }
-					image { url }
-				}
-			}
+            totalPriceSet {
+              shopMoney { amount }
+            }
+            lineItems(first: 50) {
+              nodes {
+                title
+                variant { displayName selectedOptions { name value } unitPrice { amount } price }
+                product { descriptionHtml }
+                image { url }
+              }
+            }
           }
           userErrors {
             field
