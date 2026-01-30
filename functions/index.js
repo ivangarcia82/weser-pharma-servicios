@@ -111,6 +111,11 @@ const nodesQuery = `
       nodes {
         key
         value
+        reference {
+            ... on GenericFile {
+                url
+            }
+        }
       }
     }
   }
@@ -123,7 +128,7 @@ const getOrdersObject = (nodes) => {
 
     const productsName = (node.lineItems?.nodes || []).map((li) => `${li.variant?.displayName}`).join('');
     const ordenCompraMetafield = (node.metafields?.nodes || []).find(
-      mf => mf.key === 'orden_de_compra' || mf.key === 'orden de compra'
+      mf => mf.key === 'orden_de_compra'
     );
 
     const modalProducts = (node.lineItems?.nodes || []).map((li) => {
@@ -202,6 +207,7 @@ const getOrdersObject = (nodes) => {
       totalPriceWithCurrency: formatCurrency(node.totalPriceSet.shopMoney.amount),
       userName: (node.metafields?.nodes || []).find(mf => mf.key === 'usuario')?.value,
       downloadDetails,
+      purchaseOrderUrl: ordenCompraMetafield?.reference?.url || null,
     };
   });
 }
