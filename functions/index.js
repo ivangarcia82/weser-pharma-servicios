@@ -32,6 +32,9 @@ const { defineSecret } = require("firebase-functions/params");
 setGlobalOptions({ maxInstances: 10 });
 
 const { Resend } = require('resend');
+const Busboy = require('busboy');
+const axios = require('axios');
+const FormData = require('form-data');
 
 /**
  * Helper function to make GraphQL requests to Shopify
@@ -209,6 +212,81 @@ const getOrdersObject = (nodes) => {
       downloadDetails,
       purchaseOrderUrl: ordenCompraMetafield?.reference?.url || null,
     };
+  });
+}
+
+async function uploadFileToShopify(buffer, filename, mimeType) {
+  const stagedRes = await shopifyRequest(`
+    mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+      stagedUploadsCreate(input: $input) {
+        stagedTargets {
+          url
+          resourceUrl
+          parameters { name value }
+        }
+      }
+    }
+  `, {
+    input: [{
+      filename,
+      mimeType,
+      resource: 'FILE',
+      httpMethod: 'POST'
+    }]
+  });
+
+  const target = stagedRes.stagedUploadsCreate.stagedTargets[0];
+
+  const form = new FormData();
+  for (const param of target.parameters) {
+    form.append(param.name, param.value);
+  }
+  form.append('file', buffer, {
+    filename,
+    contentType: mimeType,
+  });
+
+  await axios.post(target.url, form, {
+    headers: form.getHeaders(),
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+  });
+
+  const fileRes = await shopifyRequest(`
+    mutation fileCreate($files: [FileCreateInput!]!) {
+      fileCreate(files: $files) {
+        files { id }
+        userErrors { message }
+      }
+    }
+  `, {
+    files: [{
+      originalSource: target.resourceUrl,
+    }]
+  });
+
+  if (fileRes.fileCreate.userErrors?.length) {
+    throw new Error(fileRes.fileCreate.userErrors[0].message);
+  }
+
+  return fileRes.fileCreate.files[0].id;
+}
+
+async function attachFileMetafield(orderId, fileId) {
+  await shopifyRequest(`
+    mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) {
+        userErrors { field message }
+      }
+    }
+  `, {
+    metafields: [{
+      ownerId: orderId,
+      namespace: 'custom',
+      key: 'orden_de_compra',
+      type: 'file_reference',
+      value: fileId,
+    }]
   });
 }
 
@@ -446,3 +524,57 @@ exports.getAllDraftOrders = onCall(async (request) => {
 
   return { success: true, orders };
 });
+
+exports.uploadPurchaseOrder = onRequest(
+  { timeoutSeconds: 300, memory: '1GiB' },
+  async (req, res) => {
+    res.set('Access-Control-Allow-Origin', 'https://apiweser.generandoideas.com');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') {
+      return res.status(204).send('');
+    }
+
+    if (req.method !== 'POST') {
+      return res.status(405).send('Method not allowed');
+    }
+
+    const busboy = Busboy({ headers: req.headers });
+
+    let fileBuffer;
+    let fileName;
+    let mimeType;
+    let orderId;
+
+    busboy.on('file', (_, file, info) => {
+      fileName = info.filename;
+      mimeType = info.mimeType;
+
+      const buffers = [];
+      file.on('data', d => buffers.push(d));
+      file.on('end', () => {
+        fileBuffer = Buffer.concat(buffers);
+      });
+    });
+
+    busboy.on('field', (name, value) => {
+      if (name === 'orderId') orderId = value;
+    });
+
+    busboy.on('finish', async () => {
+      try {
+        const fileId = await uploadFileToShopify(fileBuffer, fileName, mimeType);
+
+        await attachFileMetafield(orderId, fileId);
+
+        res.json({ success: true });
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    busboy.end(req.rawBody);
+  }
+);
