@@ -290,6 +290,64 @@ async function attachFileMetafield(orderId, fileId) {
   });
 }
 
+function buildPurchaseOrderUploadedEmail({
+  orderName,
+}) {
+  return `
+    <!DOCTYPE html>
+    <html>
+      <body style="margin:0; font-family:Arial, sans-serif; font-size:12px; color:#000;">
+        <table width="90%" cellpadding="0" cellspacing="0" style="padding: 20px;">
+          <tr>
+            <td style="width: 50%; text-align: left; padding: 20px;">
+              <img src="https://cdn.shopify.com/s/files/1/0641/0338/3246/files/Logo_Inicio_1080x266_ffd1075f-6821-4fb0-a7ae-19e4c844dcf1.png?v=1731683448" style="width:60%;"/>
+            </td>
+            <td style="width: 50%; text-align: right; padding: 20px;">
+              <img src="https://cdn.shopify.com/s/files/1/0657/4266/7889/files/logo_752e5e69-8f82-4967-9b77-7d3dccad1230.png?v=1767720071" style="width:30%;"/>
+            </td>
+          </tr>
+        </table>
+
+        <table width="90%" cellpadding="0" cellspacing="0" style="margin:auto; border-collapse:collapse;">
+          <tr>
+            <td style="padding:20px; font-size:14px;">
+              <p>Hola,</p>
+              <p>
+                Se ha subido correctamente una Orden de Compra asociada a la cotización <strong>${orderName}</strong>
+              </p>
+              <p>
+                Puedes revisar la información completa desde el panel de cotizaciones.
+              </p>
+            </td>
+          </tr>
+        </table>
+
+        <table width="90%" cellpadding="0" cellspacing="0" style="margin:20px auto;">
+          <tr>
+            <td style="padding: 15px; text-align: right;">
+              <a
+                href="https://apiweser.generandoideas.com/pages/cotizaciones"
+                style="
+                  background-color:#FF7300;
+                  color:#fff;
+                  padding:12px 25px;
+                  text-decoration:none;
+                  border-radius:5px;
+                  font-weight:bold;
+                  display:inline-block;
+                "
+              >
+                Ver Cotizaciones
+              </a>
+            </td>
+          </tr>
+        </table>
+
+      </body>
+    </html>
+  `;
+}
+
 /**
  * Create a Draft Order
  * Input:
@@ -359,7 +417,7 @@ exports.createDraftOrder = onCall(async (request) => {
     }
 
 	const draftOrder = [draftOrderCreate.draftOrder];
-	/*const orders = getOrdersObject(draftOrder);
+	const orders = getOrdersObject(draftOrder);
 
 	let htmlLineItems = '';
 
@@ -460,7 +518,7 @@ exports.createDraftOrder = onCall(async (request) => {
         ],
 		subject: 'Nueva cotización creada en Weser Pharma',
 		html: htmlEmail,
-	});*/
+	});
 
     return { success: true, draftOrder };
 });
@@ -546,6 +604,7 @@ exports.uploadPurchaseOrder = onRequest(
     let fileName;
     let mimeType;
     let orderId;
+    let orderName;
 
     busboy.on('file', (_, file, info) => {
       fileName = info.filename;
@@ -560,6 +619,7 @@ exports.uploadPurchaseOrder = onRequest(
 
     busboy.on('field', (name, value) => {
       if (name === 'orderId') orderId = value;
+      if (name === 'orderName') orderName = value;
     });
 
     busboy.on('finish', async () => {
@@ -567,6 +627,22 @@ exports.uploadPurchaseOrder = onRequest(
         const fileId = await uploadFileToShopify(fileBuffer, fileName, mimeType);
 
         await attachFileMetafield(orderId, fileId);
+
+        const resend = new Resend(process.env.RESEND_API_KEY);
+
+        const htmlEmail = buildPurchaseOrderUploadedEmail({
+          orderName,
+        });
+
+        await resend.emails.send({
+          from: 'Cotizador Weser Pharma <onboarding@resend.dev>',
+          to: [
+            'acontreras@generandoideas.com',
+            // 'dolores.martinez@weserpharma.com.mx',
+          ],
+          subject: `Orden de Compra subida - Cotización ${orderName}`,
+          html: htmlEmail,
+        });
 
         res.json({ success: true });
       } catch (err) {
