@@ -296,7 +296,7 @@ function buildPurchaseOrderUploadedEmail({
   return `
     <!DOCTYPE html>
     <html>
-      <body style="margin:0; font-family:Arial, sans-serif; font-size:12px; color:#000;">
+      <body style="margin:0; font-family:Arial, sans-serif; font-size:14px; color:#000;">
         <table width="90%" cellpadding="0" cellspacing="0" style="padding: 20px;">
           <tr>
             <td style="width: 50%; text-align: left; padding: 20px;">
@@ -462,7 +462,7 @@ exports.createDraftOrder = onCall(async (request) => {
     const htmlEmail = `
     <!DOCTYPE html>
     <html>
-        <body style="margin:0; font-family:Arial, sans-serif; font-size:12px; color:#000;">
+        <body style="margin:0; font-family:Arial, sans-serif; font-size:14px; color:#000;">
             <table width="90%" cellpadding="0" cellspacing="0" style="padding: 20px;">
                 <tr>
                     <td style="width: 50%; text-align: left; padding: 20px;">
@@ -509,13 +509,13 @@ exports.createDraftOrder = onCall(async (request) => {
 
 	const resend = new Resend(process.env.RESEND_API_KEY);
 	await resend.emails.send({
-		from: 'Cotizador Weser Pharma <onboarding@resend.dev>', // permitido sin dominio
+		from: 'Cotizador Weser Pharma <noreply@generandoideas.com>',
 		to: [
-            'acontreras@generandoideas.com',
-            // 'aespinosa@generandoideas.com',
-            // 'dolores.martinez@weserpharma.com.mx',
-            // 'alejandra.aguilar@siegfried.com.mx',
-        ],
+        'acontreras@generandoideas.com',
+        'aespinosa@generandoideas.com',
+        'dolores.martinez@weserpharma.com.mx',
+        'alejandra.aguilar@siegfried.com.mx',
+    ],
 		subject: 'Nueva cotización creada en Weser Pharma',
 		html: htmlEmail,
 	});
@@ -635,12 +635,12 @@ exports.uploadPurchaseOrder = onRequest(
         });
 
         await resend.emails.send({
-          from: 'Cotizador Weser Pharma <onboarding@resend.dev>',
+          from: 'Cotizador Weser Pharma <noreply@generandoideas.com>',
           to: [
             'acontreras@generandoideas.com',
-            // 'dolores.martinez@weserpharma.com.mx',
+            'aespinosa@generandoideas.com',
           ],
-          subject: `Orden de Compra subida - Cotización ${orderName}`,
+          subject: `Orden de compra subida - Cotización ${orderName}`,
           html: htmlEmail,
         });
 
