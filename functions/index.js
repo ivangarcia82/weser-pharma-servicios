@@ -296,21 +296,21 @@ function buildPurchaseOrderUploadedEmail({
   return `
     <!DOCTYPE html>
     <html>
-      <body style="margin:0; font-family:Arial, sans-serif; font-size:14px; color:#000;">
+      <body style="margin:0; font-family:Arial, sans-serif; font-size:18px; color:#000;">
         <table width="90%" cellpadding="0" cellspacing="0" style="padding: 20px;">
           <tr>
             <td style="width: 50%; text-align: left; padding: 20px;">
-              <img src="https://cdn.shopify.com/s/files/1/0641/0338/3246/files/Logo_Inicio_1080x266_ffd1075f-6821-4fb0-a7ae-19e4c844dcf1.png?v=1731683448" style="width:60%;"/>
+              <img src="https://cdn.shopify.com/s/files/1/0641/0338/3246/files/Logo_Inicio_1080x266_ffd1075f-6821-4fb0-a7ae-19e4c844dcf1.png?v=1731683448" width="250" />
             </td>
             <td style="width: 50%; text-align: right; padding: 20px;">
-              <img src="https://cdn.shopify.com/s/files/1/0657/4266/7889/files/logo_752e5e69-8f82-4967-9b77-7d3dccad1230.png?v=1767720071" style="width:30%;"/>
+              <img src="https://cdn.shopify.com/s/files/1/0657/4266/7889/files/logo_752e5e69-8f82-4967-9b77-7d3dccad1230.png?v=1767720071" width="200" />
             </td>
           </tr>
         </table>
 
         <table width="90%" cellpadding="0" cellspacing="0" style="margin:auto; border-collapse:collapse;">
           <tr>
-            <td style="padding:20px; font-size:14px;">
+            <td style="padding:20px; font-size:18px;">
               <p>Hola,</p>
               <p>
                 Se ha subido correctamente una Orden de Compra asociada a la cotización <strong>${orderName}</strong>
@@ -416,35 +416,35 @@ exports.createDraftOrder = onCall(async (request) => {
         throw new HttpsError("invalid-argument", "Shopify validation errors", draftOrderCreate.userErrors);
     }
 
-	const draftOrder = [draftOrderCreate.draftOrder];
-	const orders = getOrdersObject(draftOrder);
+    const draftOrder = [draftOrderCreate.draftOrder];
+    const orders = getOrdersObject(draftOrder);
 
-	let htmlLineItems = '';
+    let htmlLineItems = '';
 
-	for (const lineItem of orders[0].downloadDetails.line_items) {
-		htmlLineItems += `
-			<tr>
-				<td style="padding:10px; border: .5px solid #000; text-align:left;">
-					<img src="${lineItem.image}" width="40" />
-				</td>
-				<td style="padding:10px; border: .5px solid #000; text-align:left;">
-					${lineItem.title}
-				</td>
-				<td style="padding:10px; border: .5px solid #000; text-align:left;">
-					${lineItem.description}
-				</td>
-				<td style="padding:10px; border: .5px solid #000; text-align:center;">
-					${lineItem.quantity}
-				</td>
-				<td style="padding:10px; border: .5px solid #000; text-align:center;">
-					${lineItem.unit_price}
-				</td>
-				<td style="padding:10px; border: .5px solid #000;" text-align:center;>
-					${lineItem.line_price}
-				</td>
-			</tr>
-		`;
-	}
+    for (const lineItem of orders[0].downloadDetails.line_items) {
+      htmlLineItems += `
+        <tr>
+          <td style="padding:10px; border: .5px solid #000; text-align:left;">
+            <img src="${lineItem.image}" width="80" />
+          </td>
+          <td style="padding:10px; border: .5px solid #000; text-align:left;">
+            ${lineItem.title}
+          </td>
+          <td style="padding:10px; border: .5px solid #000; text-align:left;">
+            ${lineItem.description}
+          </td>
+          <td style="padding:10px; border: .5px solid #000; text-align:center;">
+            ${lineItem.quantity}
+          </td>
+          <td style="padding:10px; border: .5px solid #000; text-align:center;">
+            ${lineItem.unit_price}
+          </td>
+          <td style="padding:10px; border: .5px solid #000;" text-align:center;>
+            ${lineItem.line_price}
+          </td>
+        </tr>
+      `;
+    }
 
     for (const t of orders[0].downloadDetails.totals) {
         htmlLineItems += `
@@ -462,14 +462,14 @@ exports.createDraftOrder = onCall(async (request) => {
     const htmlEmail = `
     <!DOCTYPE html>
     <html>
-        <body style="margin:0; font-family:Arial, sans-serif; font-size:14px; color:#000;">
+        <body style="margin:0; font-family:Arial, sans-serif; font-size:18px; color:#000;">
             <table width="90%" cellpadding="0" cellspacing="0" style="padding: 20px;">
                 <tr>
                     <td style="width: 50%; text-align: left; padding: 20px;">
-                        <img src="https://cdn.shopify.com/s/files/1/0641/0338/3246/files/Logo_Inicio_1080x266_ffd1075f-6821-4fb0-a7ae-19e4c844dcf1.png?v=1731683448" style="width: 60%;" />
+                        <img src="https://cdn.shopify.com/s/files/1/0641/0338/3246/files/Logo_Inicio_1080x266_ffd1075f-6821-4fb0-a7ae-19e4c844dcf1.png?v=1731683448" width="250" />
                     </td>
                     <td style="width: 50%; text-align: right; padding: 20px;">
-                        <img src="https://cdn.shopify.com/s/files/1/0657/4266/7889/files/logo_752e5e69-8f82-4967-9b77-7d3dccad1230.png?v=1767720071" style="width: 30%;" />
+                        <img src="https://cdn.shopify.com/s/files/1/0657/4266/7889/files/logo_752e5e69-8f82-4967-9b77-7d3dccad1230.png?v=1767720071" width="200" />
                     </td>
                 </tr>
             </table>
@@ -492,10 +492,10 @@ exports.createDraftOrder = onCall(async (request) => {
 
             <table width="90%" align="center" cellpadding="0" cellspacing="0" style="margin: 20px auto;">
                 <tr>
-                    <td style="padding: 15px; text-align: left; font-size: 14px; font-weight: bold; color: #000;">
+                    <td style="padding: 15px 0; text-align: left; font-size: 18px; font-weight: bold; color: #000;">
                         Cotización creada por: ${userName || email}
                     </td>
-                    <td style="padding: 15px; text-align: right;">
+                    <td style="padding: 15px 0; text-align: right;">
                         <a href="https://apiweser.generandoideas.com/pages/cotizaciones"
                         style="background-color: #FF7300; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
                             Ver Cotizaciones
@@ -507,18 +507,18 @@ exports.createDraftOrder = onCall(async (request) => {
     </html>
     `;
 
-	const resend = new Resend(process.env.RESEND_API_KEY);
-	await resend.emails.send({
-		from: 'Cotizador Weser Pharma <noreply@generandoideas.com>',
-		to: [
-        'acontreras@generandoideas.com',
-        'aespinosa@generandoideas.com',
-        'dolores.martinez@weserpharma.com.mx',
-        'alejandra.aguilar@siegfried.com.mx',
-    ],
-		subject: 'Nueva cotización creada en Weser Pharma',
-		html: htmlEmail,
-	});
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    await resend.emails.send({
+      from: 'Cotizador Weser Pharma <notificaciones@generandoideas.com>',
+      to: [
+          'aespinosa@generandoideas.com',
+          'dolores.martinez@weserpharma.com.mx',
+          'alejandra.aguilar@siegfried.com.mx',
+      ],
+      cc: 'acontreras@generandoideas.com',
+      subject: 'Nueva cotización creada en Weser Pharma',
+      html: htmlEmail,
+    });
 
     return { success: true, draftOrder };
 });
@@ -635,11 +635,9 @@ exports.uploadPurchaseOrder = onRequest(
         });
 
         await resend.emails.send({
-          from: 'Cotizador Weser Pharma <noreply@generandoideas.com>',
-          to: [
-            'acontreras@generandoideas.com',
-            'aespinosa@generandoideas.com',
-          ],
+          from: 'Cotizador Weser Pharma <notificaciones@generandoideas.com>',
+          to: 'aespinosa@generandoideas.com',
+          cc: 'acontreras@generandoideas.com',
           subject: `Orden de compra subida - Cotización ${orderName}`,
           html: htmlEmail,
         });
