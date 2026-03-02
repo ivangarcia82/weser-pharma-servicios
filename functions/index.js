@@ -93,6 +93,21 @@ const formatDate = (date) => {
   };
 };
 
+const calculateBusinessDays = (startDate, businessDays) => {
+  const date = new Date(startDate);
+  let daysAdded = 0;
+
+  while (daysAdded < businessDays) {
+    date.setDate(date.getDate() + 1);
+    // Skip weekends (Saturday = 6, Sunday = 0)
+    if (date.getDay() !== 6 && date.getDay() !== 0) {
+      daysAdded++;
+    }
+  }
+
+  return date;
+};
+
 const nodesQuery = `
   nodes {
     id
@@ -107,6 +122,8 @@ const nodesQuery = `
         title
         variant { displayName selectedOptions { name value } unitPrice { amount } price }
         product { descriptionHtml }
+        sku
+        vendor
         image { url }
       }
     }
@@ -123,6 +140,68 @@ const nodesQuery = `
     }
   }
 `;
+
+const vendorsInfo = {
+  'PromoOpcion': {
+    recipients: [
+      'ventascdmx3@promoopcion.com',
+      'ventascdmx5@promoopcion.com',
+      'jefaturacomercial@promoopcion.com',
+    ],
+    days: 5
+  },
+  'G4': {
+    recipients: [
+      'ventas11@g4mexico.com.mx',
+      'asesor3@g4mexico.com.mx'
+    ],
+    days: 5
+  },
+  'For Promo': {
+    recipients: [
+      'atencionaclientes6@forpromotional.com.mx',
+      'asesor5@forpromotional.com.mx'
+    ],
+    days: 5
+  },
+  'CDO': {
+    recipients: [
+      'nancy.cabrera@stocksur.com',
+      'jacqueline.estrella@stocksur.com',
+      'maria@stocksur.com',
+      'alezly.vega@stocksur.com'
+    ],
+    days: 3
+  },
+  'Innova': {
+    recipients: [
+      'citlalli.arriaga@innovation.com.mx',
+      'mariel.silva@innovation.com.mx'
+    ],
+    days: 5
+  },
+  'Doble Vela': {
+    recipients: [
+      'ventas12@doblevela.com',
+      'ventas21@doblevela.com'
+    ],
+    days: 5
+  },
+  'Impressline': {
+    recipients: [
+      'df2@impressline.com.mx',
+      'df3@impressline.com.mx'
+    ],
+    days: 5
+  },
+  'IUSB': {
+    recipients: [
+      'amaciel@iupromo.mx',
+      'barevalo@iupromo.mx'
+    ],
+    days: 5
+  },
+}
 
 const getOrdersObject = (nodes) => {
   return nodes.map((node) => {
@@ -149,6 +228,8 @@ const getOrdersObject = (nodes) => {
       return {
         title: `${li.title} - ${color}`,
         description: li.product?.descriptionHtml,
+        sku: li.sku,
+        vendor: li.vendor,
         quantity,
         price: formatCurrency(li.variant?.unitPrice?.amount),
         total: formatCurrency(li.variant?.price),
@@ -379,6 +460,8 @@ exports.createDraftOrder = onCall(async (request) => {
                 title
                 variant { displayName selectedOptions { name value } unitPrice { amount } price }
                 product { descriptionHtml }
+                sku
+                vendor
                 image { url }
               }
             }
@@ -520,6 +603,89 @@ exports.createDraftOrder = onCall(async (request) => {
       html: htmlEmail,
     });
 
+    const startDate = new Date();
+    const formattedsStartDate = formatDate(startDate);
+    const uniqueVendors = [...new Set(orders[0].modalProducts.map(item => item.vendor))];
+    for (const vendor of uniqueVendors) {
+        if (['Fabricacion', 'LAMY'].includes(vendor)) continue;
+        const endDate = calculateBusinessDays(startDate, vendorsInfo[vendor].days);
+        const formattedEndDate = formatDate(endDate);
+
+        const vendorItems = orders[0].modalProducts.filter(item => item.vendor === vendor);
+        let vendorHtmlLineItems = '';
+        for (const vendorItem of vendorItems) {
+          vendorHtmlLineItems += `
+            <tr>
+              <td style="padding:10px; border: .5px solid #000; text-align:center;">
+                <img src="${vendorItem.image}" width="80" />
+              </td>
+              <td style="padding:10px; border: .5px solid #000; text-align:center;">
+                ${vendorItem.title}
+              </td>
+              <td style="padding:10px; border: .5px solid #000; text-align:center;">
+                ${vendorItem.sku}
+              </td>
+              <td style="padding:10px; border: .5px solid #000; text-align:center;">
+                ${vendorItem.quantity}
+              </td>
+            </tr>
+          `;
+        }
+        const vendorHtmlEmail = `
+        <!DOCTYPE html>
+        <html>
+            <body style="margin:0; font-family:Arial, sans-serif; font-size:18px; color:#000;">
+                <table width="90%" cellpadding="0" cellspacing="0" style="padding: 20px;">
+                    <tr>
+                        <td style="width: 100%; text-align: center; padding: 20px;">
+                            <img src="https://cdn.shopify.com/s/files/1/0641/0338/3246/files/Logo_Inicio_1080x266_ffd1075f-6821-4fb0-a7ae-19e4c844dcf1.png?v=1731683448" width="250" />
+                        </td>
+                    </tr>
+                </table>
+
+                <table width="90%" cellpadding="0" cellspacing="0" style="margin:auto; border-collapse:collapse;">
+                  <tr>
+                    <td style="padding:20px 0; font-size:18px; font-weight: bold;">
+                      <p>Buen día, team ${vendor}.</p>
+                      <p>
+                        Derivado de una cotización en nuestra API de Weser Pharma, atentamente se pide el apartado por un periodo de ${vendorsInfo[vendor].days} días hábiles de los siguientes productos.
+                      </p>
+                      <p>
+                        El periodo de apartado será desde el ${formattedsStartDate.day}/${formattedsStartDate.month}/${formattedsStartDate.year} hasta el ${formattedEndDate.day}/${formattedEndDate.month}/${formattedEndDate.year}.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+
+                <table width="90%" align="center" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                    <thead>
+                        <tr>
+                            <th style="background:#FF7300; border:.5px solid #000; padding: 10px;">IMAGEN</th>
+                            <th style="background:#FF7300; border:.5px solid #000; padding: 10px;">NOMBRE</th>
+                            <th style="background:#FF7300; border:.5px solid #000; padding: 10px;">CLAVE</th>
+                            <th style="background:#FF7300; border:.5px solid #000; padding: 10px;">CANTIDAD</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${vendorHtmlLineItems}
+                    </tbody>
+                </table>
+            </body>
+        </html>
+        `;
+
+        await resend.emails.send({
+          from: 'Generando Ideas <notificaciones@generandoideas.com>',
+          to: vendorsInfo[vendor].recipients,
+          cc: [
+              'ihernandez@generandoideas.com',
+              'aespinosa@generandoideas.com',
+              'acontreras@generandoideas.com'
+          ],
+          subject: 'Apartado de Productos | Generando Ideas',
+          html: vendorHtmlEmail,
+        });
+    }
     return { success: true, draftOrder };
 });
 
