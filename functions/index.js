@@ -22,6 +22,7 @@ const logger = require("firebase-functions/logger");
 // In the v1 API, each function can only serve one request per container, so
 // this will be the maximum concurrent request count.
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
 
 // Define secrets if you plan to use Secret Manager, otherwise we fallback to process.env
@@ -522,7 +523,7 @@ exports.createDraftOrder = onCall(async (request) => {
           <td style="padding:10px; border: .5px solid #000; text-align:center;">
             ${lineItem.unit_price}
           </td>
-          <td style="padding:10px; border: .5px solid #000;" text-align:center;>
+          <td style="padding:10px; border: .5px solid #000; text-align:center;">
             ${lineItem.line_price}
           </td>
         </tr>
@@ -599,16 +600,18 @@ exports.createDraftOrder = onCall(async (request) => {
           'alejandra.aguilar@siegfried.com.mx',
       ],
       cc: 'acontreras@generandoideas.com',
-      subject: 'Nueva cotización creada en Weser Pharma',
+      subject: `Cotización ${orders[0].name} creada | Cotizador Weser Pharma`,
       html: htmlEmail,
     });
 
     const startDate = new Date();
     const formattedsStartDate = formatDate(startDate);
     const uniqueVendors = [...new Set(orders[0].modalProducts.map(item => item.vendor))];
+    const vendorEndDates = [];
     for (const vendor of uniqueVendors) {
         if (['Fabricacion', 'LAMY'].includes(vendor)) continue;
         const endDate = calculateBusinessDays(startDate, vendorsInfo[vendor].days);
+        vendorEndDates.push(endDate);
         const formattedEndDate = formatDate(endDate);
 
         const vendorItems = orders[0].modalProducts.filter(item => item.vendor === vendor);
@@ -686,6 +689,29 @@ exports.createDraftOrder = onCall(async (request) => {
           html: vendorHtmlEmail,
         });
     }
+
+    if (vendorEndDates.length > 0) {
+        const maxEndDate = new Date(Math.max(...vendorEndDates.map(d => d.getTime())));
+        const yyyy = maxEndDate.getFullYear();
+        const mm = String(maxEndDate.getMonth() + 1).padStart(2, '0');
+        const dd = String(maxEndDate.getDate()).padStart(2, '0');
+        await shopifyRequest(`
+            mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+                metafieldsSet(metafields: $metafields) {
+                    userErrors { field message }
+                }
+            }
+        `, {
+            metafields: [{
+                ownerId: draftOrderCreate.draftOrder.id,
+                namespace: 'custom',
+                key: 'vencimiento_apartado',
+                type: 'date',
+                value: `${yyyy}-${mm}-${dd}`,
+            }]
+        });
+    }
+
     return { success: true, draftOrder };
 });
 
@@ -804,7 +830,7 @@ exports.uploadPurchaseOrder = onRequest(
           from: 'Cotizador Weser Pharma <notificaciones@generandoideas.com>',
           to: 'aespinosa@generandoideas.com',
           cc: 'acontreras@generandoideas.com',
-          subject: `Orden de compra subida - Cotización ${orderName}`,
+          subject: `Orden de compra subida para cotización ${orderName} | Cotizador Weser Pharma`,
           html: htmlEmail,
         });
 
@@ -818,3 +844,174 @@ exports.uploadPurchaseOrder = onRequest(
     busboy.end(req.rawBody);
   }
 );
+
+function buildApartadoReminderEmail(orderRows) {
+  let tableRows = '';
+  for (const order of orderRows) {
+    const [y, m, d] = order.vencimiento.split('-');
+    tableRows += `
+      <tr>
+        <td style="padding:10px; border:.5px solid #ccc; text-align:center;">${order.nombre}</td>
+        <td style="padding:10px; border:.5px solid #ccc; text-align:center;">${order.usuario}</td>
+        <td style="padding:10px; border:.5px solid #ccc; text-align:center;">${order.fechaCreacion}</td>
+        <td style="padding:10px; border:.5px solid #ccc; text-align:center;">${d}/${m}/${y}</td>
+        <td style="padding:10px; border:.5px solid #ccc; text-align:center; background-color:${order.daysBg}; color:${order.daysColor}; font-weight:bold;">
+          ${order.remainingDays === 0 ? 'Vence hoy' : `${order.remainingDays} día${order.remainingDays !== 1 ? 's' : ''}`}
+        </td>
+      </tr>
+    `;
+  }
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <body style="margin:0; font-family:Arial, sans-serif; font-size:18px; color:#000;">
+        <table width="90%" cellpadding="0" cellspacing="0" style="padding:20px; margin:auto;">
+          <tr>
+            <td style="width:50%; text-align:left; padding:20px;">
+              <img src="https://cdn.shopify.com/s/files/1/0641/0338/3246/files/Logo_Inicio_1080x266_ffd1075f-6821-4fb0-a7ae-19e4c844dcf1.png?v=1731683448" width="250" />
+            </td>
+            <td style="width:50%; text-align:right; padding:20px;">
+              <img src="https://cdn.shopify.com/s/files/1/0657/4266/7889/files/logo_752e5e69-8f82-4967-9b77-7d3dccad1230.png?v=1767720071" width="200" />
+            </td>
+          </tr>
+        </table>
+
+        <table width="90%" cellpadding="0" cellspacing="0" style="margin:0 auto 20px;">
+          <tr>
+            <td style="padding:0 20px; font-size:18px;">
+              <p>Buen día,</p>
+              <p>
+                A continuación se muestran las cotizaciones
+                con apartados vigentes que aún no tienen Orden de Compra adjunta.
+              </p>
+            </td>
+          </tr>
+        </table>
+
+        <table width="90%" align="center" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:auto;">
+          <thead>
+            <tr>
+              <th style="background:#FF7300; border:.5px solid #ccc; padding:10px; color:#fff;">COTIZACIÓN</th>
+              <th style="background:#FF7300; border:.5px solid #ccc; padding:10px; color:#fff;">CREADA POR</th>
+              <th style="background:#FF7300; border:.5px solid #ccc; padding:10px; color:#fff;">FECHA CREACIÓN</th>
+              <th style="background:#FF7300; border:.5px solid #ccc; padding:10px; color:#fff;">VENCIMIENTO</th>
+              <th style="background:#FF7300; border:.5px solid #ccc; padding:10px; color:#fff;">DÍAS RESTANTES</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+
+        <table width="90%" cellpadding="0" cellspacing="0" style="margin:20px auto;">
+          <tr>
+            <td style="padding:15px 0; text-align:right;">
+              <a href="https://apiweser.generandoideas.com/pages/cotizaciones"
+                style="background-color: #FF7300; color:#fff; padding:12px 25px; text-decoration:none; border-radius:5px; font-weight:bold; display:inline-block;">
+                Ver Cotizaciones
+              </a>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `;
+}
+
+async function runRecordatorio() {
+    const query = `
+        query {
+            draftOrders(first: 50, query:"tag:weserpharma" reverse: true) {
+                nodes {
+                    id
+                    name
+                    createdAt
+                    metafields(first: 10) {
+                        nodes {
+                            key
+                            value
+                        }
+                    }
+                }
+            }
+        }
+    `;
+
+    const data = await shopifyRequest(query);
+    const nodes = data?.draftOrders?.nodes || [];
+
+    const todayCDMX = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Mexico_City" }));
+    todayCDMX.setHours(0, 0, 0, 0);
+
+    const activeOrders = nodes.reduce((acc, node) => {
+        const mfs = node.metafields?.nodes || [];
+        const hasOrdenCompra = mfs.some(mf => mf.key === 'orden_de_compra');
+        const vencimientoMf = mfs.find(mf => mf.key === 'vencimiento_apartado');
+
+        if (hasOrdenCompra || !vencimientoMf) return acc;
+
+        const [year, month, day] = vencimientoMf.value.split('-').map(Number);
+        const endDate = new Date(year, month - 1, day);
+        const remainingDays = Math.ceil((endDate - todayCDMX) / (1000 * 60 * 60 * 24));
+
+        if (remainingDays < 0) return acc;
+
+        const usuarioMf = mfs.find(mf => mf.key === 'usuario');
+        const date = formatDate(node.createdAt);
+
+        let daysColor = '#000';
+        let daysBg = '#ffffff';
+        if (remainingDays === 0) {
+            daysColor = '#fff';
+            daysBg = '#dc2626';
+        } else if (remainingDays <= 2) {
+            daysColor = '#fff';
+            daysBg = '#FF7300';
+        }
+
+        acc.push({
+            nombre: node.name,
+            usuario: usuarioMf?.value || '-',
+            fechaCreacion: `${date.day}/${date.month}/${date.year}`,
+            vencimiento: vencimientoMf.value,
+            remainingDays,
+            daysColor,
+            daysBg,
+        });
+
+        return acc;
+    }, []).sort((a, b) => a.remainingDays - b.remainingDays);
+
+    if (activeOrders.length === 0) {
+        logger.info('recordatorioApartado: no hay apartados vigentes hoy.');
+        return { sent: false, orders: 0 };
+    }
+
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    await resend.emails.send({
+        from: 'Cotizador Weser Pharma <notificaciones@generandoideas.com>',
+        to: [
+            'aespinosa@generandoideas.com',
+            'dolores.martinez@weserpharma.com.mx',
+            'alejandra.aguilar@siegfried.com.mx',
+        ],
+        cc: 'acontreras@generandoideas.com',
+        subject: `Recordatorio: ${activeOrders.length} apartado${activeOrders.length !== 1 ? 's' : ''} vigente${activeOrders.length !== 1 ? 's' : ''} sin OC | Cotizador Weser Pharma`,
+        html: buildApartadoReminderEmail(activeOrders),
+    });
+
+    logger.info(`recordatorioApartado: recordatorio enviado para ${activeOrders.length} cotizaciones.`);
+    return { sent: true, orders: activeOrders.length };
+}
+
+exports.recordatorioApartado = onSchedule(
+    { schedule: '0 9 * * *', timeZone: 'America/Mexico_City' },
+    runRecordatorio
+);
+
+// TEMPORAL — borrar después de probar
+// exports.testRecordatorio = onRequest(async (_req, res) => {
+//     const result = await runRecordatorio();
+//     res.json(result);
+// });
