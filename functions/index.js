@@ -488,7 +488,13 @@ exports.createDraftOrder = onCall(async (request) => {
                 key: 'usuario',
                 namespace: 'custom',
                 type: 'single_line_text_field',
-                value: userName || email,
+                value: userName,
+            },
+            {
+                key: 'email_usuario',
+                namespace: 'custom',
+                type: 'single_line_text_field',
+                value: email,
             },
         ],
     };
@@ -577,7 +583,7 @@ exports.createDraftOrder = onCall(async (request) => {
             <table width="90%" align="center" cellpadding="0" cellspacing="0" style="margin: 20px auto;">
                 <tr>
                     <td style="padding: 15px 0; text-align: left; font-size: 18px; font-weight: bold; color: #000;">
-                        Cotización creada por: ${userName || email}
+                        Cotización creada por: ${userName}
                     </td>
                     <td style="padding: 15px 0; text-align: right;">
                         <a href="https://apiweser.generandoideas.com/pages/cotizaciones"
@@ -846,19 +852,56 @@ exports.uploadPurchaseOrder = onRequest(
 );
 
 function buildApartadoReminderEmail(orderRows) {
-  let tableRows = '';
+  let orderSections = '';
+
   for (const order of orderRows) {
     const [y, m, d] = order.vencimiento.split('-');
-    tableRows += `
-      <tr>
-        <td style="padding:10px; border:.5px solid #ccc; text-align:center;">${order.nombre}</td>
-        <td style="padding:10px; border:.5px solid #ccc; text-align:center;">${order.usuario}</td>
-        <td style="padding:10px; border:.5px solid #ccc; text-align:center;">${order.fechaCreacion}</td>
-        <td style="padding:10px; border:.5px solid #ccc; text-align:center;">${d}/${m}/${y}</td>
-        <td style="padding:10px; border:.5px solid #ccc; text-align:center; background-color:${order.daysBg}; color:${order.daysColor}; font-weight:bold;">
-          ${order.remainingDays === 0 ? 'Vence hoy' : `${order.remainingDays} día${order.remainingDays !== 1 ? 's' : ''}`}
-        </td>
-      </tr>
+    const remainingLabel = order.remainingDays === 0
+      ? 'Vence hoy'
+      : `${order.remainingDays} día${order.remainingDays !== 1 ? 's' : ''}`;
+
+    let productRows = '';
+    for (const p of order.products) {
+      const daysLabel = p.vendorDays != null ? `${p.vendorDays} días hábiles` : '-';
+      productRows += `
+        <tr>
+          <td style="padding:8px; border:.5px solid #ccc; text-align:center;">
+            ${p.image ? `<img src="${p.image}" width="60" style="display:block;margin:auto;" />` : '-'}
+          </td>
+          <td style="padding:8px; border:.5px solid #ccc; text-align:left;">${p.title}</td>
+          <td style="padding:8px; border:.5px solid #ccc; text-align:center;">${p.sku || '-'}</td>
+          <td style="padding:8px; border:.5px solid #ccc; text-align:center;">${p.quantity || '-'}</td>
+          <td style="padding:8px; border:.5px solid #ccc; text-align:center;">${daysLabel}</td>
+        </tr>
+      `;
+    }
+
+    orderSections += `
+      <table width="90%" cellpadding="0" cellspacing="0" style="margin:0 auto 30px; border-collapse:collapse;">
+        <tr>
+          <td colspan="6" style="padding:12px 10px; background:#FF7300; color:#fff; font-weight:bold; font-size:18px;">
+            ${order.nombre}
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            Creada por: ${order.usuario}
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            Fecha de creación: ${order.fechaCreacion}
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            Vence: ${d}/${m}/${y}
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <span style="background-color:${order.daysBg}; color:${order.daysColor}; padding:2px 8px; border-radius:4px;">
+              ${remainingLabel}
+            </span>
+          </td>
+        </tr>
+        <tr>
+          <th style="background:#ffeedd; border:.5px solid #ccc; padding:8px; color:#000; font-size:14px;">IMAGEN</th>
+          <th style="background:#ffeedd; border:.5px solid #ccc; padding:8px; color:#000; font-size:14px;">NOMBRE</th>
+          <th style="background:#ffeedd; border:.5px solid #ccc; padding:8px; color:#000; font-size:14px;">CLAVE</th>
+          <th style="background:#ffeedd; border:.5px solid #ccc; padding:8px; color:#000; font-size:14px;">CANTIDAD</th>
+          <th style="background:#ffeedd; border:.5px solid #ccc; padding:8px; color:#000; font-size:14px;">DÍAS APARTADO</th>
+        </tr>
+        ${productRows}
+      </table>
     `;
   }
 
@@ -879,36 +922,20 @@ function buildApartadoReminderEmail(orderRows) {
 
         <table width="90%" cellpadding="0" cellspacing="0" style="margin:0 auto 20px;">
           <tr>
-            <td style="padding:0 20px; font-size:18px;">
+            <td style="padding:0 20px;">
               <p>Buen día,</p>
-              <p>
-                A continuación se muestran las cotizaciones
-                con apartados vigentes que aún no tienen Orden de Compra adjunta.
-              </p>
+              <p>A continuación se muestran las cotizaciones con apartados vigentes que aún no tienen Orden de Compra adjunta.</p>
             </td>
           </tr>
         </table>
 
-        <table width="90%" align="center" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:auto;">
-          <thead>
-            <tr>
-              <th style="background:#FF7300; border:.5px solid #ccc; padding:10px; color:#fff;">COTIZACIÓN</th>
-              <th style="background:#FF7300; border:.5px solid #ccc; padding:10px; color:#fff;">CREADA POR</th>
-              <th style="background:#FF7300; border:.5px solid #ccc; padding:10px; color:#fff;">FECHA CREACIÓN</th>
-              <th style="background:#FF7300; border:.5px solid #ccc; padding:10px; color:#fff;">VENCIMIENTO</th>
-              <th style="background:#FF7300; border:.5px solid #ccc; padding:10px; color:#fff;">DÍAS RESTANTES</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-        </table>
+        ${orderSections}
 
         <table width="90%" cellpadding="0" cellspacing="0" style="margin:20px auto;">
           <tr>
             <td style="padding:15px 0; text-align:right;">
               <a href="https://apiweser.generandoideas.com/pages/cotizaciones"
-                style="background-color: #FF7300; color:#fff; padding:12px 25px; text-decoration:none; border-radius:5px; font-weight:bold; display:inline-block;">
+                style="background-color:#FF7300; color:#fff; padding:12px 25px; text-decoration:none; border-radius:5px; font-weight:bold; display:inline-block;">
                 Ver Cotizaciones
               </a>
             </td>
@@ -922,11 +949,22 @@ function buildApartadoReminderEmail(orderRows) {
 async function runRecordatorio() {
     const query = `
         query {
-            draftOrders(first: 50, query:"tag:weserpharma" reverse: true) {
+            draftOrders(first: 50, query:"tag:weserpharma", reverse: true) {
                 nodes {
                     id
                     name
                     createdAt
+                    lineItems(first: 50) {
+                        nodes {
+                            title
+                            sku
+                            vendor
+                            image { url }
+                            variant {
+                                selectedOptions { name value }
+                            }
+                        }
+                    }
                     metafields(first: 10) {
                         nodes {
                             key
@@ -958,6 +996,7 @@ async function runRecordatorio() {
         if (remainingDays < 0) return acc;
 
         const usuarioMf = mfs.find(mf => mf.key === 'usuario');
+        const emailUsuarioMf = mfs.find(mf => mf.key === 'email_usuario');
         const date = formatDate(node.createdAt);
 
         let daysColor = '#000';
@@ -970,14 +1009,36 @@ async function runRecordatorio() {
             daysBg = '#FF7300';
         }
 
+        const products = (node.lineItems?.nodes || []).map(li => {
+            let color = '';
+            let quantity = '';
+
+            (li.variant?.selectedOptions || []).forEach(option => {
+                if (option.name === 'Color') {
+                  color = option.value;
+                } else if (option.name === 'Cantidad') {
+                  quantity = option.value;
+                }
+            });
+            return {
+                title: `${li.title} - ${color}`,
+                sku: li.sku,
+                vendorDays: vendorsInfo[li.vendor]?.days ?? null,
+                quantity,
+                image: li.image?.url || null,
+            };
+        });
+
         acc.push({
             nombre: node.name,
             usuario: usuarioMf?.value || '-',
+            emailUsuario: emailUsuarioMf?.value || null,
             fechaCreacion: `${date.day}/${date.month}/${date.year}`,
             vencimiento: vencimientoMf.value,
             remainingDays,
             daysColor,
             daysBg,
+            products,
         });
 
         return acc;
@@ -988,18 +1049,34 @@ async function runRecordatorio() {
         return { sent: false, orders: 0 };
     }
 
+    const adminRecipients = [
+        'aespinosa@generandoideas.com',
+        'dolores.martinez@weserpharma.com.mx',
+        'alejandra.aguilar@siegfried.com.mx',
+    ];
+
+    const ordersByUserEmail = activeOrders.reduce((acc, order) => {
+        const key = order.emailUsuario || '__sin_email__';
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(order);
+        return acc;
+    }, {});
+
     const resend = new Resend(process.env.RESEND_API_KEY);
-    await resend.emails.send({
-        from: 'Cotizador Weser Pharma <notificaciones@generandoideas.com>',
-        to: [
-            'aespinosa@generandoideas.com',
-            'dolores.martinez@weserpharma.com.mx',
-            'alejandra.aguilar@siegfried.com.mx',
-        ],
-        cc: 'acontreras@generandoideas.com',
-        subject: `Recordatorio: ${activeOrders.length} apartado${activeOrders.length !== 1 ? 's' : ''} vigente${activeOrders.length !== 1 ? 's' : ''} sin OC | Cotizador Weser Pharma`,
-        html: buildApartadoReminderEmail(activeOrders),
-    });
+
+    for (const [userEmail, userOrders] of Object.entries(ordersByUserEmail)) {
+        const to = userEmail === '__sin_email__'
+            ? adminRecipients
+            : [...adminRecipients, userEmail];
+
+        await resend.emails.send({
+            from: 'Cotizador Weser Pharma <notificaciones@generandoideas.com>',
+            to,
+            cc: 'acontreras@generandoideas.com',
+            subject: `Recordatorio: ${userOrders.length} apartado${userOrders.length !== 1 ? 's' : ''} vigente${userOrders.length !== 1 ? 's' : ''} sin OC | Cotizador Weser Pharma`,
+            html: buildApartadoReminderEmail(userOrders),
+        });
+    }
 
     logger.info(`recordatorioApartado: recordatorio enviado para ${activeOrders.length} cotizaciones.`);
     return { sent: true, orders: activeOrders.length };
