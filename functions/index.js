@@ -1083,7 +1083,7 @@ async function runRecordatorio() {
 }
 
 exports.recordatorioApartado = onSchedule(
-    { schedule: '0 9 * * *', timeZone: 'America/Mexico_City' },
+    { schedule: '0 9 * * 1-5', timeZone: 'America/Mexico_City' },
     runRecordatorio
 );
 
