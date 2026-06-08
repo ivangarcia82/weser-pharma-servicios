@@ -213,6 +213,22 @@ const getOrdersObject = (nodes) => {
     const ordenCompraMetafield = (node.metafields?.nodes || []).find(
       mf => mf.key === 'orden_de_compra'
     );
+    const canceladaMetafield = (node.metafields?.nodes || []).find(
+      mf => mf.key === 'cotizacion_cancelada'
+    );
+    const remindersCancelledMetafield = (node.metafields?.nodes || []).find(
+      mf => mf.key === 'recordatorios_cancelados' && mf.value === 'true'
+    );
+
+    let orderStatus = 'Pendiente';
+    let statusClass = 'pending';
+    if (canceladaMetafield) {
+      orderStatus = 'Cancelada';
+      statusClass = 'cancelled';
+    } else if (ordenCompraMetafield) {
+      orderStatus = 'Completada';
+      statusClass = 'completed';
+    }
 
     const modalProducts = (node.lineItems?.nodes || []).map((li) => {
       let color = '';
@@ -284,8 +300,10 @@ const getOrdersObject = (nodes) => {
       internalDate: `${date.year}-${date.month}-${date.day} ${date.hours}:${date.minutes}:${date.seconds}`,
       updatedAt: `${updatedAt.year}-${updatedAt.month}-${updatedAt.day} ${updatedAt.hours}:${updatedAt.minutes}:${updatedAt.seconds}`,
       productsName,
-      orderStatus: ordenCompraMetafield ? 'Completada' : 'Pendiente',
-      statusClass: ordenCompraMetafield ? 'completed' : 'pending',
+      orderStatus,
+      statusClass,
+      canceledAt: canceladaMetafield?.value || null,
+      remindersActive: !ordenCompraMetafield && !canceladaMetafield && !remindersCancelledMetafield,
       modalProducts,
       itemsSize: node.lineItems?.nodes?.length,
       totalPriceWithoutCurrency: node.totalPriceSet.shopMoney.amount,
@@ -425,6 +443,49 @@ function buildPurchaseOrderUploadedEmail({
           </tr>
         </table>
 
+      </body>
+    </html>
+  `;
+}
+
+function buildApartadoCancelEmail({ orderName, audience }) {
+  const intro = audience === 'vendor'
+    ? `<p>Buen día,</p>
+       <p>
+         Se informa que el apartado de productos solicitado derivado de la cotización
+         <strong>${orderName}</strong> ha sido <strong>cancelado</strong>.
+       </p>
+       <p>
+         Pueden liberar los productos previamente apartados. Agradecemos su atención y apoyo.
+       </p>`
+    : `<p>Hola,</p>
+       <p>
+         La cotización <strong>${orderName}</strong> ha sido <strong>cancelada</strong>.
+         Se notificó a los proveedores para liberar el apartado y se detuvieron los recordatorios.
+       </p>`;
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <body style="margin:0; font-family:Arial, sans-serif; font-size:18px; color:#000;">
+        <table width="90%" cellpadding="0" cellspacing="0" style="padding: 20px;">
+          <tr>
+            <td style="width: 50%; text-align: left; padding: 20px;">
+              <img src="https://cdn.shopify.com/s/files/1/0641/0338/3246/files/Logo_Inicio_1080x266_ffd1075f-6821-4fb0-a7ae-19e4c844dcf1.png?v=1731683448" width="250" />
+            </td>
+            <td style="width: 50%; text-align: right; padding: 20px;">
+              <img src="https://cdn.shopify.com/s/files/1/0657/4266/7889/files/logo_752e5e69-8f82-4967-9b77-7d3dccad1230.png?v=1767720071" width="200" />
+            </td>
+          </tr>
+        </table>
+
+        <table width="90%" cellpadding="0" cellspacing="0" style="margin:auto; border-collapse:collapse;">
+          <tr>
+            <td style="padding:20px; font-size:18px;">
+              ${intro}
+            </td>
+          </tr>
+        </table>
       </body>
     </html>
   `;
@@ -614,6 +675,7 @@ exports.createDraftOrder = onCall(async (request) => {
     const formattedsStartDate = formatDate(startDate);
     const uniqueVendors = [...new Set(orders[0].modalProducts.map(item => item.vendor))];
     const vendorEndDates = [];
+    const apartadoEmailRefs = [];
     for (const vendor of uniqueVendors) {
         if (['Fabricacion', 'LAMY'].includes(vendor)) continue;
         const endDate = calculateBusinessDays(startDate, vendorsInfo[vendor].days);
@@ -683,6 +745,10 @@ exports.createDraftOrder = onCall(async (request) => {
         </html>
         `;
 
+        // Message-ID propio para poder enlazar después el correo de cancelación al mismo hilo.
+        const vendorSlug = vendor.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const messageId = `<apartado-${Date.now()}-${vendorSlug}@generandoideas.com>`;
+
         await resend.emails.send({
           from: 'Generando Ideas <notificaciones@generandoideas.com>',
           to: vendorsInfo[vendor].recipients,
@@ -693,14 +759,43 @@ exports.createDraftOrder = onCall(async (request) => {
           ],
           subject: 'Apartado de Productos | Generando Ideas',
           html: vendorHtmlEmail,
+          headers: { 'Message-ID': messageId },
+        });
+
+        apartadoEmailRefs.push({
+            vendor,
+            messageId,
+            recipients: vendorsInfo[vendor].recipients,
         });
     }
+
+    const metafieldsToSet = [];
 
     if (vendorEndDates.length > 0) {
         const maxEndDate = new Date(Math.max(...vendorEndDates.map(d => d.getTime())));
         const yyyy = maxEndDate.getFullYear();
         const mm = String(maxEndDate.getMonth() + 1).padStart(2, '0');
         const dd = String(maxEndDate.getDate()).padStart(2, '0');
+        metafieldsToSet.push({
+            ownerId: draftOrderCreate.draftOrder.id,
+            namespace: 'custom',
+            key: 'vencimiento_apartado',
+            type: 'date',
+            value: `${yyyy}-${mm}-${dd}`,
+        });
+    }
+
+    if (apartadoEmailRefs.length > 0) {
+        metafieldsToSet.push({
+            ownerId: draftOrderCreate.draftOrder.id,
+            namespace: 'custom',
+            key: 'apartado_email_refs',
+            type: 'json',
+            value: JSON.stringify(apartadoEmailRefs),
+        });
+    }
+
+    if (metafieldsToSet.length > 0) {
         await shopifyRequest(`
             mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
                 metafieldsSet(metafields: $metafields) {
@@ -708,13 +803,7 @@ exports.createDraftOrder = onCall(async (request) => {
                 }
             }
         `, {
-            metafields: [{
-                ownerId: draftOrderCreate.draftOrder.id,
-                namespace: 'custom',
-                key: 'vencimiento_apartado',
-                type: 'date',
-                value: `${yyyy}-${mm}-${dd}`,
-            }]
+            metafields: metafieldsToSet,
         });
     }
 
@@ -779,6 +868,147 @@ exports.getAllDraftOrders = onCall(async (request) => {
   const orders = getOrdersObject(data?.draftOrders?.nodes);
 
   return { success: true, orders };
+});
+
+/**
+ * Cancel a Draft Order (cotización)
+ * Marks the quotation as cancelled (keeps it as history), notifies the vendors in the
+ * same email thread as the original "apartado" email, notifies the internal team /
+ * creator, and stops reminders for this quotation.
+ * Input:
+ * - draftOrderId: String (GID, e.g. "gid://shopify/DraftOrder/123")
+ */
+exports.cancelDraftOrder = onCall(async (request) => {
+    const { draftOrderId } = request.data;
+
+    if (!draftOrderId) {
+        throw new HttpsError("invalid-argument", "The function must be called with a 'draftOrderId'.");
+    }
+
+    const query = `
+      query getDraftOrder($id: ID!) {
+        draftOrder(id: $id) {
+          id
+          name
+          metafields(first: 20) {
+            nodes { key value }
+          }
+        }
+      }
+    `;
+
+    const data = await shopifyRequest(query, { id: draftOrderId });
+    const draftOrder = data?.draftOrder;
+
+    if (!draftOrder) {
+        throw new HttpsError("not-found", "No se encontró la cotización.");
+    }
+
+    const mfs = draftOrder.metafields?.nodes || [];
+
+    if (mfs.some(mf => mf.key === 'orden_de_compra')) {
+        throw new HttpsError("failed-precondition", "No se puede cancelar una cotización que ya tiene Orden de Compra.");
+    }
+
+    if (mfs.some(mf => mf.key === 'cotizacion_cancelada')) {
+        return { success: true, alreadyCancelled: true };
+    }
+
+    // Marca de estado: fecha de cancelación en CDMX.
+    const nowCDMX = formatDate(new Date());
+    await shopifyRequest(`
+        mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+            metafieldsSet(metafields: $metafields) {
+                userErrors { field message }
+            }
+        }
+    `, {
+        metafields: [{
+            ownerId: draftOrder.id,
+            namespace: 'custom',
+            key: 'cotizacion_cancelada',
+            type: 'date',
+            value: `${nowCDMX.year}-${nowCDMX.month}-${nowCDMX.day}`,
+        }]
+    });
+
+    const resend = new Resend(process.env.RESEND_API_KEY);
+
+    // Correo de cancelación a cada proveedor, enlazado al hilo del apartado original.
+    const refsMf = mfs.find(mf => mf.key === 'apartado_email_refs');
+    let apartadoRefs = [];
+    if (refsMf?.value) {
+        try { apartadoRefs = JSON.parse(refsMf.value); } catch (e) { apartadoRefs = []; }
+    }
+
+    for (const ref of apartadoRefs) {
+        if (!ref.recipients?.length || !ref.messageId) continue;
+        await resend.emails.send({
+            from: 'Generando Ideas <notificaciones@generandoideas.com>',
+            to: ref.recipients,
+            cc: [
+                'ihernandez@generandoideas.com',
+                'aespinosa@generandoideas.com',
+                'acontreras@generandoideas.com'
+            ],
+            subject: 'Re: Apartado de Productos | Generando Ideas',
+            html: buildApartadoCancelEmail({ orderName: draftOrder.name, audience: 'vendor' }),
+            headers: {
+                'In-Reply-To': ref.messageId,
+                'References': ref.messageId,
+            },
+        });
+    }
+
+    // Correo al equipo interno + usuario creador.
+    const adminRecipients = [
+        'aespinosa@generandoideas.com',
+        'dolores.martinez@weserpharma.com.mx',
+        'alejandra.aguilar@siegfried.com.mx',
+    ];
+    const emailUsuario = mfs.find(mf => mf.key === 'email_usuario')?.value;
+    const internalTo = emailUsuario ? [...adminRecipients, emailUsuario] : adminRecipients;
+
+    await resend.emails.send({
+        from: 'Cotizador Weser Pharma <notificaciones@generandoideas.com>',
+        to: internalTo,
+        cc: 'acontreras@generandoideas.com',
+        subject: `Cotización ${draftOrder.name} cancelada | Cotizador Weser Pharma`,
+        html: buildApartadoCancelEmail({ orderName: draftOrder.name, audience: 'internal' }),
+    });
+
+    return { success: true };
+});
+
+/**
+ * Cancel reminders only (the project continues, OC pending, but stop daily reminders).
+ * Input:
+ * - draftOrderId: String (GID)
+ */
+exports.cancelReminders = onCall(async (request) => {
+    const { draftOrderId } = request.data;
+
+    if (!draftOrderId) {
+        throw new HttpsError("invalid-argument", "The function must be called with a 'draftOrderId'.");
+    }
+
+    await shopifyRequest(`
+        mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+            metafieldsSet(metafields: $metafields) {
+                userErrors { field message }
+            }
+        }
+    `, {
+        metafields: [{
+            ownerId: draftOrderId,
+            namespace: 'custom',
+            key: 'recordatorios_cancelados',
+            type: 'boolean',
+            value: 'true',
+        }]
+    });
+
+    return { success: true };
 });
 
 exports.uploadPurchaseOrder = onRequest(
@@ -985,9 +1215,11 @@ async function runRecordatorio() {
     const activeOrders = nodes.reduce((acc, node) => {
         const mfs = node.metafields?.nodes || [];
         const hasOrdenCompra = mfs.some(mf => mf.key === 'orden_de_compra');
+        const hasCancelada = mfs.some(mf => mf.key === 'cotizacion_cancelada');
+        const remindersOff = mfs.some(mf => mf.key === 'recordatorios_cancelados' && mf.value === 'true');
         const vencimientoMf = mfs.find(mf => mf.key === 'vencimiento_apartado');
 
-        if (hasOrdenCompra || !vencimientoMf) return acc;
+        if (hasOrdenCompra || hasCancelada || remindersOff || !vencimientoMf) return acc;
 
         const [year, month, day] = vencimientoMf.value.split('-').map(Number);
         const endDate = new Date(year, month - 1, day);
