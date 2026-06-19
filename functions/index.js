@@ -167,10 +167,11 @@ const vendorsInfo = {
   },
   'CDO': {
     recipients: [
-      'nancy.cabrera@stocksur.com',
-      'jacqueline.estrella@stocksur.com',
-      'maria@stocksur.com',
-      'alezly.vega@stocksur.com'
+      // 'nancy.cabrera@stocksur.com',
+      // 'jacqueline.estrella@stocksur.com',
+      // 'maria@stocksur.com',
+      // 'alezly.vega@stocksur.com'
+      'ventasxl@stocksur.com',
     ],
     days: 3
   },
@@ -664,7 +665,7 @@ exports.createDraftOrder = onCall(async (request) => {
       to: [
           'aespinosa@generandoideas.com',
           'dolores.martinez@weserpharma.com.mx',
-          'alejandra.aguilar@siegfried.com.mx',
+          // 'alejandra.aguilar@siegfried.com.mx',
       ],
       cc: 'acontreras@generandoideas.com',
       subject: `Cotización ${orders[0].name} creada | Cotizador Weser Pharma`,
@@ -964,7 +965,7 @@ exports.cancelDraftOrder = onCall(async (request) => {
     const adminRecipients = [
         'aespinosa@generandoideas.com',
         'dolores.martinez@weserpharma.com.mx',
-        'alejandra.aguilar@siegfried.com.mx',
+        // 'alejandra.aguilar@siegfried.com.mx',
     ];
     const emailUsuario = mfs.find(mf => mf.key === 'email_usuario')?.value;
     const internalTo = emailUsuario ? [...adminRecipients, emailUsuario] : adminRecipients;
@@ -1284,7 +1285,7 @@ async function runRecordatorio() {
     const adminRecipients = [
         'aespinosa@generandoideas.com',
         'dolores.martinez@weserpharma.com.mx',
-        'alejandra.aguilar@siegfried.com.mx',
+        // 'alejandra.aguilar@siegfried.com.mx',
     ];
 
     const ordersByUserEmail = activeOrders.reduce((acc, order) => {
