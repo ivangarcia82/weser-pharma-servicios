@@ -664,6 +664,7 @@ exports.createDraftOrder = onCall(async (request) => {
       from: 'Cotizador Weser Pharma <notificaciones@generandoideas.com>',
       to: [
           'aespinosa@generandoideas.com',
+          'zchino@generandoideas.com',
           'dolores.martinez@weserpharma.com.mx',
           // 'alejandra.aguilar@siegfried.com.mx',
       ],
@@ -756,6 +757,7 @@ exports.createDraftOrder = onCall(async (request) => {
           cc: [
               'ihernandez@generandoideas.com',
               'aespinosa@generandoideas.com',
+              'zchino@generandoideas.com',
               'acontreras@generandoideas.com'
           ],
           subject: 'Apartado de Productos | Generando Ideas',
@@ -950,6 +952,7 @@ exports.cancelDraftOrder = onCall(async (request) => {
             cc: [
                 'ihernandez@generandoideas.com',
                 'aespinosa@generandoideas.com',
+                'zchino@generandoideas.com',
                 'acontreras@generandoideas.com'
             ],
             subject: 'Re: Apartado de Productos | Generando Ideas',
@@ -964,6 +967,7 @@ exports.cancelDraftOrder = onCall(async (request) => {
     // Correo al equipo interno + usuario creador.
     const adminRecipients = [
         'aespinosa@generandoideas.com',
+        'zchino@generandoideas.com',
         'dolores.martinez@weserpharma.com.mx',
         // 'alejandra.aguilar@siegfried.com.mx',
     ];
@@ -1065,7 +1069,10 @@ exports.uploadPurchaseOrder = onRequest(
 
         await resend.emails.send({
           from: 'Cotizador Weser Pharma <notificaciones@generandoideas.com>',
-          to: 'aespinosa@generandoideas.com',
+          to: [
+            'aespinosa@generandoideas.com',
+            'zchino@generandoideas.com'
+          ],
           cc: 'acontreras@generandoideas.com',
           subject: `Orden de compra subida para cotización ${orderName} | Cotizador Weser Pharma`,
           html: htmlEmail,
@@ -1284,6 +1291,7 @@ async function runRecordatorio() {
 
     const adminRecipients = [
         'aespinosa@generandoideas.com',
+        'zchino@generandoideas.com',
         'dolores.martinez@weserpharma.com.mx',
         // 'alejandra.aguilar@siegfried.com.mx',
     ];
